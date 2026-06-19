@@ -117,6 +117,15 @@ class BotOrchestrator {
       return null;
     }
 
+    if (carpool.status === 'cancelled') {
+      return this.sendMessage(groupId, `❌ ${carpool.script_name} 拼车已取消，无法报名`);
+    }
+
+    if (carpool.status === 'locked' && !is_standby) {
+      this.sendMessage(groupId, `🔒 ${carpool.script_name} 已锁车，已自动将 ${nickname} 加入候补队列\n\n`);
+      return this.handleJoin({ ...data, is_standby: true });
+    }
+
     const existing = db.prepare(`
       SELECT * FROM players 
       WHERE carpool_id = ? AND (nickname = ? OR (wxid IS NOT NULL AND wxid = ?)) AND status = 'confirmed'
@@ -202,14 +211,14 @@ class BotOrchestrator {
 
     if (text.startsWith('锁车')) {
       if (!carpoolId) return this.sendMessage(groupId, '当前没有进行中的拼车');
-      db.prepare("UPDATE carpools SET status = 'locked' WHERE id = ?").run(carpoolId);
+      db.prepare("UPDATE carpools SET status = ? WHERE id = ?").run('locked', carpoolId);
       const carpool = getCarpoolWithPlayers(carpoolId);
       return this.sendMessage(groupId, `🔒 ${carpool.script_name} 已锁车！\n\n` + this.formatCarpoolStatus(carpool));
     }
 
     if (text.startsWith('解锁')) {
       if (!carpoolId) return this.sendMessage(groupId, '当前没有进行中的拼车');
-      db.prepare("UPDATE carpools SET status = 'recruiting' WHERE id = ?").run(carpoolId);
+      db.prepare("UPDATE carpools SET status = ? WHERE id = ?").run('recruiting', carpoolId);
       const carpool = getCarpoolWithPlayers(carpoolId);
       return this.sendMessage(groupId, `🔓 ${carpool.script_name} 已解锁，继续招募\n\n` + this.formatCarpoolStatus(carpool));
     }
@@ -217,8 +226,7 @@ class BotOrchestrator {
     if (text.startsWith('取消') || text.startsWith('删除')) {
       if (!carpoolId) return this.sendMessage(groupId, '当前没有进行中的拼车');
       const carpool = getCarpoolWithPlayers(carpoolId);
-      db.prepare("UPDATE carpools SET status = 'cancelled' WHERE id = ?").run(carpoolId);
-      this.activeCarpools.delete(groupId);
+      db.prepare("UPDATE carpools SET status = ? WHERE id = ?").run('cancelled', carpoolId);
       return this.sendMessage(groupId, `❌ ${carpool.script_name} 已取消`);
     }
 
@@ -378,6 +386,10 @@ ${carpool.role_requirement ? `🎭 角色：${carpool.role_requirement}` : ''}
 
     if (carpool.remaining_count > 0 && carpool.status === 'recruiting') {
       msg += `\n还差 ${carpool.remaining_count} 人，回复「上车」报名`;
+    } else if (carpool.status === 'locked') {
+      msg += `\n🔒 已锁车，如需加入请回复「候补」`;
+    } else if (carpool.status === 'cancelled') {
+      msg += `\n❌ 拼车已取消`;
     }
 
     msg += `\n🔗 详情：${CLIENT_URL}/carpool/${carpool.id}`;

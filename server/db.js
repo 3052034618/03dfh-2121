@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const dataDir = path.join(__dirname, '..', 'data');
-const dbPath = path.join(dataDir, 'jubensha.json');
+const dbPath = process.env.DB_PATH || path.join(dataDir, 'jubensha.json');
 
 const DEFAULT_DATA = {
   carpools: [],
@@ -159,6 +159,17 @@ function buildSelectStatement(sql) {
     );
   }
 
+  if (sql.includes('SELECT * FROM carpools') && sql.includes('remind_sent = 0')) {
+    return new Statement('carpools', 'select', (db, time1, time2) => {
+      return db.carpools.filter(c => {
+        if (!['recruiting', 'locked'].includes(c.status)) return false;
+        if (c.remind_sent === 1 || c.remind_sent === true) return false;
+        const t = new Date(c.start_time).getTime();
+        return t >= new Date(time1).getTime() && t <= new Date(time2).getTime();
+      });
+    });
+  }
+
   if (sql.includes('SELECT * FROM carpools WHERE status IN') && sql.includes('SELECT')) {
     return new Statement('carpools', 'select', (db) =>
       db.carpools.filter(c => ['recruiting', 'locked'].includes(c.status))
@@ -172,17 +183,6 @@ function buildSelectStatement(sql) {
           const confirmedCount = db.players.filter(p => p.carpool_id === c.id && p.is_standby === 0 && p.status === 'confirmed').length;
           return { ...c, confirmed_count: confirmedCount };
         });
-    });
-  }
-
-  if (sql.includes('SELECT * FROM carpools') && sql.includes('remind_sent = 0')) {
-    return new Statement('carpools', 'select', (db, time1, time2) => {
-      return db.carpools.filter(c => {
-        if (!['recruiting', 'locked'].includes(c.status)) return false;
-        if (c.remind_sent === 1 || c.remind_sent === true) return false;
-        const t = new Date(c.start_time).getTime();
-        return t >= new Date(time1).getTime() && t <= new Date(time2).getTime();
-      });
     });
   }
 

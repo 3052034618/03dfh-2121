@@ -21,6 +21,26 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.post('/api/__debug/check-upcoming', (req, res) => {
+  try {
+    const reminder = require('./services/reminderService');
+    reminder.checkUpcomingCarpools();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/__debug/check-full', (req, res) => {
+  try {
+    const reminder = require('./services/reminderService');
+    reminder.checkFullCarpools();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('*', (req, res) => {
   const indexPath = path.join(__dirname, '..', 'client', 'dist', 'index.html');
   res.sendFile(indexPath);

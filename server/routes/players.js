@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { getCarpoolWithPlayers } = require('./carpools');
+const reminderService = require('../services/reminderService');
 
 const router = express.Router();
 
@@ -47,9 +48,16 @@ router.post('/', (req, res) => {
     return res.status(404).json({ error: '拼车不存在' });
   }
 
-  if (carpool.status !== 'recruiting') {
+  if (carpool.status === 'cancelled') {
+    return res.status(400).json({ error: '该拼车已取消，无法加入' });
+  }
+
+  if (carpool.status !== 'recruiting' && carpool.status !== 'locked') {
     return res.status(400).json({ error: '当前拼车状态不允许加入' });
   }
+
+  const forceStandby = carpool.status === 'locked' && !is_standby;
+  const actualStandby = forceStandby || is_standby;
 
   const existing = db.prepare(`
     SELECT * FROM players 
@@ -64,8 +72,8 @@ router.post('/', (req, res) => {
     SELECT COUNT(*) as cnt FROM players WHERE carpool_id = ? AND is_standby = 0 AND status = 'confirmed'
   `).get(carpool_id).cnt;
 
-  const actualStandby = is_standby || (confirmedCount >= carpool.need_count);
-  const standbyOrder = actualStandby ? getNextStandbyOrder(carpool_id) : null;
+  const finalStandby = actualStandby || (confirmedCount >= carpool.need_count);
+  const standbyOrder = finalStandby ? getNextStandbyOrder(carpool_id) : null;
 
   const id = uuidv4();
   db.prepare(`
@@ -75,18 +83,30 @@ router.post('/', (req, res) => {
     id, carpool_id, nickname, wxid || '', gender || '',
     can_crossplay ? 1 : 0,
     arrival_time || '', note || '',
-    actualStandby ? 1 : 0,
+    finalStandby ? 1 : 0,
     standbyOrder
   );
 
   const player = db.prepare('SELECT * FROM players WHERE id = ?').get(id);
   const updatedCarpool = getCarpoolWithPlayers(carpool_id);
 
+  if (!finalStandby && updatedCarpool.current_count >= updatedCarpool.need_count && !carpool.lock_message_sent) {
+    reminderService.emit('carpool:full', {
+      carpoolId: carpool_id,
+      groupId: carpool.group_id,
+      shopName: carpool.shop_name,
+      scriptName: carpool.script_name,
+      startTime: carpool.start_time,
+      count: updatedCarpool.current_count,
+      needCount: carpool.need_count
+    });
+  }
+
   res.status(201).json({
     player,
     carpool: updatedCarpool,
-    auto_standby: actualStandby && !is_standby,
-    message: actualStandby && !is_standby ? '车位已满，已自动加入候补队列' : '报名成功'
+    auto_standby: finalStandby && !is_standby,
+    message: finalStandby && !is_standby ? '车位已满，已自动加入候补队列' : '报名成功'
   });
 });
 

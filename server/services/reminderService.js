@@ -48,7 +48,7 @@ function checkFullCarpools() {
 function checkUpcomingCarpools() {
   const now = new Date();
   const REMIND_MINUTES = parseInt(process.env.REMIND_BEFORE_START || '30');
-  const WINDOW_BEFORE = REMIND_MINUTES - 5;
+  const WINDOW_BEFORE = Math.max(1, REMIND_MINUTES - 25);
   const WINDOW_AFTER = REMIND_MINUTES + 5;
   const windowStart = new Date(now.getTime() + WINDOW_BEFORE * 60 * 1000);
   const windowEnd = new Date(now.getTime() + WINDOW_AFTER * 60 * 1000);

@@ -18,4 +18,6 @@ try {
   console.log('[Bot] 如需启用微信机器人，请执行: npm install wechaty wechaty-puppet-wechat4u');
 }
 
-bot.start();
+bot.start().then(() => {
+  require('../server/index.js');
+});
