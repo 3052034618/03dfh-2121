@@ -151,6 +151,10 @@ function parseJoinMessage(text, nickname) {
     }
   }
 
+  if (/^(取消上车|取消报名|不去了|鸽车|下车|退出)\s*$/i.test(text.trim())) {
+    result.action = 'quit';
+  }
+
   return result;
 }
 

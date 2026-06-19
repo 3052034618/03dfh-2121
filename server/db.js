@@ -188,15 +188,21 @@ function buildSelectStatement(sql) {
 
   if (sql.includes('SELECT * FROM carpools WHERE 1=1')) {
     return new Statement('carpools', 'select', (db, ...args) => {
+      const hasStatusCond = sql.includes('AND status = ?');
+      const hasGroupCond = sql.includes('AND group_id = ?');
       const nums = args.filter(a => typeof a === 'number');
       const strs = args.filter(a => typeof a === 'string');
       let status = null, groupId = null;
-      if (strs.length >= 1) status = strs[0];
-      if (strs.length >= 2) groupId = strs[1];
+      let strIdx = 0;
+      if (hasStatusCond) { status = strs[strIdx]; strIdx++; }
+      if (hasGroupCond) { groupId = strs[strIdx]; strIdx++; }
       let limit = 50, offset = 0;
-      if (nums.length >= 1) limit = nums[nums.length - 2];
-      if (nums.length >= 2) offset = nums[nums.length - 1];
-      if (nums.length === 1) { limit = nums[0]; offset = 0; }
+      if (nums.length >= 2) {
+        limit = nums[nums.length - 2];
+        offset = nums[nums.length - 1];
+      } else if (nums.length === 1) {
+        limit = nums[0];
+      }
 
       let result = [...db.carpools];
       if (status && status !== 'all') {
@@ -230,6 +236,12 @@ function buildSelectStatement(sql) {
   if (sql.includes('SELECT * FROM players WHERE id = ?')) {
     return new Statement('players', 'select', (db, id) =>
       db.players.find(p => p.id === id)
+    );
+  }
+
+  if (sql.includes('SELECT * FROM players WHERE carpool_id = ?') && sql.includes("status = 'confirmed'") && !sql.includes('is_standby')) {
+    return new Statement('players', 'select', (db, carpoolId) =>
+      db.players.filter(p => p.carpool_id === carpoolId && p.status === 'confirmed')
     );
   }
 
@@ -409,10 +421,11 @@ function buildUpdateStatement(sql) {
   }
 
   if (sql.includes('UPDATE players SET status = \'cancelled\'')) {
-    return new Statement('players', 'update', (db, id) => {
+    return new Statement('players', 'update', (db, cancelledAt, id) => {
       const p = db.players.find(p => p.id === id);
       if (!p) return { changes: 0 };
       p.status = 'cancelled';
+      p.cancelled_at = cancelledAt;
       p.last_active_at = new Date().toISOString();
       return { changes: 1 };
     });

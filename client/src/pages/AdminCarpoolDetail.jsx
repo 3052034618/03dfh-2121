@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { validateCarpoolForm } from '../shared.jsx';
 
 export default function AdminCarpoolDetail() {
   const { id } = useParams();
@@ -67,14 +68,8 @@ export default function AdminCarpoolDetail() {
   }
 
   function saveEdit(data) {
-    fetch(`/api/carpools/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    }).then(() => {
-      setShowEditCarpool(false);
-      loadData();
-    });
+    setShowEditCarpool(false);
+    loadData();
   }
 
   if (loading || !carpool) {
@@ -364,12 +359,39 @@ function EditCarpoolModal({ carpool, onClose, onSubmit }) {
     need_count: carpool.need_count,
     role_requirement: carpool.role_requirement
   });
+  const [errors, setErrors] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
-  function submit() {
-    onSubmit({
+  async function submit() {
+    const errs = validateCarpoolForm(form);
+    if (errs.length > 0) {
+      setErrors(errs);
+      return;
+    }
+    setErrors([]);
+    setSubmitting(true);
+
+    const submitData = {
       ...form,
       start_time: new Date(form.start_time).toISOString()
-    });
+    };
+
+    try {
+      const res = await fetch(`/api/carpools/${carpool.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(submitData)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || '保存失败');
+      }
+      onSubmit(submitData);
+    } catch (err) {
+      setErrors([err.message]);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -377,6 +399,11 @@ function EditCarpoolModal({ carpool, onClose, onSubmit }) {
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-title">编辑拼车</div>
         <div className="modal-body">
+          {errors.length > 0 && (
+            <div className="form-errors">
+              {errors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
+            </div>
+          )}
           <label className="input-label">店名</label>
           <input
             className="input"
@@ -404,10 +431,10 @@ function EditCarpoolModal({ carpool, onClose, onSubmit }) {
               <input
                 type="number"
                 className="input"
-                min={2}
-                max={12}
+                min={1}
+                max={30}
                 value={form.need_count}
-                onChange={e => setForm({ ...form, need_count: parseInt(e.target.value) })}
+                onChange={e => setForm({ ...form, need_count: parseInt(e.target.value) || 0 })}
               />
             </div>
           </div>
@@ -419,8 +446,10 @@ function EditCarpoolModal({ carpool, onClose, onSubmit }) {
           />
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" onClick={submit}>保存</button>
+          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>取消</button>
+          <button className="btn btn-primary" onClick={submit} disabled={submitting}>
+            {submitting ? '保存中...' : '保存'}
+          </button>
         </div>
       </div>
     </div>

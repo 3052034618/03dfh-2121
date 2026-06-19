@@ -145,11 +145,15 @@ class BotOrchestrator {
   }
 
   async handleJoin(data) {
-    const { groupId, senderId, nickname, gender, can_crossplay, arrival_time, note, is_standby } = data;
+    const { groupId, senderId, nickname, gender, can_crossplay, arrival_time, note, is_standby, action } = data;
 
     const carpoolId = this.getCurrentCarpoolId(groupId);
     if (!carpoolId) {
       return null;
+    }
+
+    if (action === 'quit') {
+      return this.handlePlayerQuit(groupId, carpoolId, nickname, senderId);
     }
 
     const carpool = db.prepare('SELECT * FROM carpools WHERE id = ?').get(carpoolId);
@@ -167,10 +171,15 @@ class BotOrchestrator {
       return this.handleJoin({ ...data, is_standby: true });
     }
 
-    const existing = db.prepare(`
+    const allConfirmedPlayers = db.prepare(`
       SELECT * FROM players 
-      WHERE carpool_id = ? AND (nickname = ? OR (wxid IS NOT NULL AND wxid = ?)) AND status = 'confirmed'
-    `).get(carpoolId, nickname, senderId || '');
+      WHERE carpool_id = ? AND status = 'confirmed'
+    `).all(carpoolId);
+
+    const existing = allConfirmedPlayers.find(p =>
+      p.nickname === nickname ||
+      (p.wxid && senderId && p.wxid === senderId)
+    );
 
     if (existing) {
       db.prepare(`
@@ -187,6 +196,10 @@ class BotOrchestrator {
       const reply = `${nickname}，已更新你的信息\n\n` + this.formatCarpoolStatus(updated);
       this.sendMessage(groupId, reply);
       return { type: 'player_updated', reply };
+    }
+
+    if (action === 'update') {
+      return this.sendMessage(groupId, `${nickname}，你还没有报名哦，请先发「上车」或「报名」加入`);
     }
 
     const confirmedCount = db.prepare(`
@@ -552,10 +565,15 @@ ${scriptName} @ ${shopName}
   }
 
   handlePlayerQuit(groupId, carpoolId, nickname, wxid) {
-    const player = db.prepare(`
+    const allConfirmed = db.prepare(`
       SELECT * FROM players 
-      WHERE carpool_id = ? AND status = 'confirmed' AND (nickname = ? OR (wxid AND wxid = ?))
-    `).get(carpoolId, nickname, wxid || '');
+      WHERE carpool_id = ? AND status = 'confirmed'
+    `).all(carpoolId);
+
+    const player = allConfirmed.find(p =>
+      p.nickname === nickname ||
+      (p.wxid && wxid && p.wxid === wxid)
+    );
 
     if (!player) {
       return this.sendMessage(groupId, `❌ ${nickname} 未在当前拼车名单中`);
