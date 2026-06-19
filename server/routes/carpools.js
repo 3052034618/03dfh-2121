@@ -19,7 +19,7 @@ function getCarpoolWithPlayers(id) {
   const standbyPlayers = db.prepare(`
     SELECT * FROM players 
     WHERE carpool_id = ? AND is_standby = 1 AND status = 'confirmed'
-    ORDER BY standby_order ASC, last_active_at DESC
+    ORDER BY last_active_at DESC, standby_order ASC
   `).all(id);
 
   const cancelledPlayers = db.prepare(`

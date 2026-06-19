@@ -47,21 +47,27 @@ function checkFullCarpools() {
 
 function checkUpcomingCarpools() {
   const now = new Date();
-  const remindTime = new Date(now.getTime() + REMIND_BEFORE_MINUTES * 60 * 1000);
+  const REMIND_MINUTES = parseInt(process.env.REMIND_BEFORE_START || '30');
+  const WINDOW_BEFORE = REMIND_MINUTES - 5;
+  const WINDOW_AFTER = REMIND_MINUTES + 5;
+  const windowStart = new Date(now.getTime() + WINDOW_BEFORE * 60 * 1000);
+  const windowEnd = new Date(now.getTime() + WINDOW_AFTER * 60 * 1000);
 
   const carpools = db.prepare(`
     SELECT * FROM carpools 
     WHERE status IN ('recruiting', 'locked') 
       AND remind_sent = 0
+      AND start_time >= ?
       AND start_time <= ?
-      AND start_time > ?
-  `).all(remindTime.toISOString(), now.toISOString());
+  `).all(windowStart.toISOString(), windowEnd.toISOString());
 
   carpools.forEach(c => {
     const players = db.prepare(`
       SELECT * FROM players 
       WHERE carpool_id = ? AND is_standby = 0 AND status = 'confirmed'
     `).all(c.id);
+
+    const diffMinutes = Math.round((new Date(c.start_time) - now) / 60000);
 
     emit('carpool:upcoming', {
       carpoolId: c.id,
@@ -70,7 +76,7 @@ function checkUpcomingCarpools() {
       startTime: c.start_time,
       groupId: c.group_id,
       players,
-      minutesBefore: REMIND_BEFORE_MINUTES
+      minutesBefore: Math.max(1, Math.round(diffMinutes))
     });
   });
 }
@@ -87,7 +93,7 @@ function checkStandbyPromotion(carpoolId) {
     const nextStandby = db.prepare(`
       SELECT * FROM players 
       WHERE carpool_id = ? AND is_standby = 1 AND status = 'confirmed'
-      ORDER BY standby_order ASC, last_active_at DESC
+      ORDER BY last_active_at DESC, standby_order ASC
       LIMIT 1
     `).get(carpoolId);
 

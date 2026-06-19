@@ -181,7 +181,7 @@ function buildSelectStatement(sql) {
         if (!['recruiting', 'locked'].includes(c.status)) return false;
         if (c.remind_sent === 1 || c.remind_sent === true) return false;
         const t = new Date(c.start_time).getTime();
-        return t <= new Date(time1).getTime() && t > new Date(time2).getTime();
+        return t >= new Date(time1).getTime() && t <= new Date(time2).getTime();
       });
     });
   }
@@ -219,9 +219,9 @@ function buildSelectStatement(sql) {
     return new Statement('players', 'select', (db, carpoolId) =>
       db.players.filter(p => p.carpool_id === carpoolId && p.is_standby === 1 && p.status === 'confirmed')
         .sort((a, b) => {
-          const ord = (a.standby_order || 0) - (b.standby_order || 0);
-          if (ord !== 0) return ord;
-          return new Date(b.last_active_at) - new Date(a.last_active_at);
+          const activeDiff = new Date(b.last_active_at) - new Date(a.last_active_at);
+          if (activeDiff !== 0) return activeDiff;
+          return (a.standby_order || 0) - (b.standby_order || 0);
         })
     );
   }
@@ -231,9 +231,9 @@ function buildSelectStatement(sql) {
       const list = db.players.filter(p =>
         p.carpool_id === carpoolId && p.is_standby === 1 && p.status === 'confirmed'
       ).sort((a, b) => {
-        const ord = (a.standby_order || 0) - (b.standby_order || 0);
-        if (ord !== 0) return ord;
-        return new Date(b.last_active_at) - new Date(a.last_active_at);
+        const activeDiff = new Date(b.last_active_at) - new Date(a.last_active_at);
+        if (activeDiff !== 0) return activeDiff;
+        return (a.standby_order || 0) - (b.standby_order || 0);
       });
       return list.slice(0, 1);
     });
@@ -245,6 +245,14 @@ function buildSelectStatement(sql) {
         .sort((a, b) => new Date(b.joined_at) - new Date(a.joined_at));
       return list.slice(0, 1);
     });
+  }
+
+  if (sql.includes('SELECT * FROM players') && sql.includes('WHERE carpool_id = ? AND nickname = ?')) {
+    return new Statement('players', 'select', (db, carpoolId, nickname) =>
+      db.players.find(p =>
+        p.carpool_id === carpoolId && p.nickname === nickname && p.status === 'confirmed'
+      )
+    );
   }
 
   if (sql.includes('SELECT * FROM players') && sql.includes('WHERE carpool_id = ? AND (nickname = ?')) {
@@ -261,7 +269,11 @@ function buildSelectStatement(sql) {
       const confirmed = db.players.filter(p => p.carpool_id === carpoolId && p.is_standby === 0 && p.status === 'confirmed')
         .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
       const standby = db.players.filter(p => p.carpool_id === carpoolId && p.is_standby === 1 && p.status === 'confirmed')
-        .sort((a, b) => (a.standby_order || 0) - (b.standby_order || 0));
+        .sort((a, b) => {
+          const activeDiff = new Date(b.last_active_at) - new Date(a.last_active_at);
+          if (activeDiff !== 0) return activeDiff;
+          return (a.standby_order || 0) - (b.standby_order || 0);
+        });
       return [...confirmed, ...standby];
     });
   }

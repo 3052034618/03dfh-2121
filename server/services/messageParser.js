@@ -135,7 +135,7 @@ function parseJoinMessage(text, nickname) {
 
 function isAdminCommand(text) {
   return /^(锁车|解锁|取消|删除|移除)\s*#?\d*$/.test(text.trim()) ||
-         /^踢人\s*@?.+$/.test(text.trim()) ||
+         /^(踢人|移除|踢)\s*@?.+$/.test(text.trim()) ||
          /^列表$/.test(text.trim());
 }
 

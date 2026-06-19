@@ -172,7 +172,17 @@ class BotOrchestrator {
     reply += this.formatCarpoolStatus(updated);
     this.sendMessage(groupId, reply);
 
-    reminderService.checkFullCarpools();
+    if (!actualStandby && updated.current_count >= updated.need_count && !updated.lock_message_sent) {
+      this.sendLockReminder({
+        carpoolId: carpoolId,
+        groupId,
+        shopName: updated.shop_name,
+        scriptName: updated.script_name,
+        startTime: updated.start_time,
+        count: updated.current_count,
+        needCount: updated.need_count
+      });
+    }
 
     return { type: actualStandby ? 'standby_added' : 'player_added', reply, playerId };
   }
@@ -212,7 +222,84 @@ class BotOrchestrator {
       return this.sendMessage(groupId, `❌ ${carpool.script_name} 已取消`);
     }
 
+    const kickMatch = text.match(/^(踢人|移除|踢)\s*[@]?\s*(.+)$/);
+    if (kickMatch) {
+      if (!carpoolId) return this.sendMessage(groupId, '当前没有进行中的拼车');
+      const targetName = kickMatch[2].trim().replace(/^@/, '').trim();
+      return this.handleKickPlayer(groupId, carpoolId, targetName);
+    }
+
     return null;
+  }
+
+  async handleKickPlayer(groupId, carpoolId, targetName) {
+    const target = db.prepare(`
+      SELECT * FROM players 
+      WHERE carpool_id = ? AND nickname = ? AND status = 'confirmed'
+    `).get(carpoolId, targetName);
+
+    if (!target) {
+      return this.sendMessage(groupId, `❌ 找不到玩家「${targetName}」`);
+    }
+
+    const wasStandby = target.is_standby === 1;
+
+    db.prepare("UPDATE players SET status = 'cancelled', last_active_at = CURRENT_TIMESTAMP WHERE id = ?").run(target.id);
+
+    let promotedPlayer = null;
+    if (!wasStandby) {
+      promotedPlayer = this.promoteNextStandby(carpoolId);
+    }
+
+    const updated = getCarpoolWithPlayers(carpoolId);
+
+    let msg = wasStandby
+      ? `⏳ 已将候补「${targetName}」移出队列\n\n`
+      : `👢 已将「${targetName}」移出确认名单\n\n`;
+
+    if (promotedPlayer) {
+      msg += `🎊 候补「${promotedPlayer.nickname}」自动转正！\n\n`;
+    }
+
+    msg += this.formatCarpoolStatus(updated);
+    this.sendMessage(groupId, msg);
+
+    if (promotedPlayer) {
+      reminderService.emit('standby:promote', {
+        carpoolId,
+        player: promotedPlayer,
+        shopName: updated.shop_name,
+        scriptName: updated.script_name,
+        groupId
+      });
+    }
+
+    return { type: 'player_kicked', targetName, promotedPlayer };
+  }
+
+  promoteNextStandby(carpoolId) {
+    const nextStandby = db.prepare(`
+      SELECT * FROM players 
+      WHERE carpool_id = ? AND is_standby = 1 AND status = 'confirmed'
+      ORDER BY last_active_at DESC, standby_order ASC
+      LIMIT 1
+    `).get(carpoolId);
+
+    if (!nextStandby) return null;
+
+    const oldOrder = nextStandby.standby_order;
+
+    db.prepare(`
+      UPDATE players SET is_standby = 0, standby_order = NULL, last_active_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(nextStandby.id);
+
+    db.prepare(`
+      UPDATE players SET standby_order = standby_order - 1
+      WHERE carpool_id = ? AND is_standby = 1 AND status = 'confirmed' AND standby_order > ?
+    `).run(carpoolId, oldOrder);
+
+    return db.prepare('SELECT * FROM players WHERE id = ?').get(nextStandby.id);
   }
 
   sendHelpMessage({ groupId }) {
@@ -229,6 +316,7 @@ class BotOrchestrator {
 
 【管理命令】
 锁车 / 解锁 / 取消
+踢人 @玩家名 或 移除 玩家名
 列表 - 查看当前拼车
 帮助 - 显示本说明
 

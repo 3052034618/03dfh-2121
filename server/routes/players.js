@@ -134,7 +134,7 @@ router.post('/:id/cancel', (req, res) => {
     const nextStandby = db.prepare(`
       SELECT * FROM players 
       WHERE carpool_id = ? AND is_standby = 1 AND status = 'confirmed'
-      ORDER BY standby_order ASC, last_active_at DESC
+      ORDER BY last_active_at DESC, standby_order ASC
       LIMIT 1
     `).get(player.carpool_id);
 
