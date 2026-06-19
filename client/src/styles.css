@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --primary: #6366f1;
   --primary-dark: #4f46e5;
   --secondary: #f59e0b;
@@ -495,3 +495,72 @@
   display: flex;
   gap: 6px;
 }
+
+
+/* 群总览 */
+.admin-container { max-width: 960px; margin: 0 auto; padding: 16px; }
+.admin-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.admin-header h1 { margin: 0 0 4px; font-size: 22px; }
+.header-actions { display: flex; gap: 8px; }
+.section { margin-bottom: 28px; }
+.section h2 { font-size: 16px; margin: 0 0 12px; padding-left: 8px; border-left: 4px solid var(--primary); }
+
+.filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+.filter-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { padding: 6px 14px; border: 1px solid var(--border); background: #fff; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all .15s; }
+.tab:hover { border-color: var(--primary); }
+.tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.group-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 16px; cursor: pointer; transition: all .15s; }
+.group-card:hover { border-color: var(--primary); box-shadow: 0 4px 14px rgba(99,102,241,.12); transform: translateY(-1px); }
+.group-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.group-card-head h3 { margin: 0; font-size: 16px; }
+.stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 14px; }
+.stat { text-align: center; padding: 8px 4px; border-radius: 8px; background: #f9fafb; }
+.stat b { display: block; font-size: 20px; line-height: 1; color: var(--text-muted); }
+.stat span { display: block; font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.stat.has.recruiting b { color: var(--primary); }
+.stat.has.locked b { color: var(--secondary); }
+.stat.has.cancelled b { color: var(--danger); }
+.stat.completed b { color: var(--success); }
+
+.recent-carpools > * + * { margin-top: 6px; }
+.mini-carpool { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; font-size: 12px; padding: 6px 8px; background: #f9fafb; border-radius: 6px; }
+.mini-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-time, .mini-count { color: var(--text-muted); white-space: nowrap; }
+
+.carpool-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.carpool-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px; transition: all .15s; }
+.carpool-card:hover { border-color: var(--primary); }
+.carpool-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.carpool-head h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.carpool-body > * + * { margin-top: 6px; font-size: 13px; color: var(--text-muted); }
+.player-tags { margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap; }
+.player-tag { background: #eef2ff; color: var(--primary); font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+.carpool-actions { margin-top: 12px; display: flex; gap: 6px; }
+
+.badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+.badge-recruiting { background: #eef2ff; color: var(--primary); }
+.badge-locked { background: #fef3c7; color: #92400e; }
+.badge-cancelled { background: #fee2e2; color: #991b1b; }
+.badge-completed { background: #d1fae5; color: #065f46; }
+
+.ml-8 { margin-left: 8px; }
+.recruiting-color { color: var(--primary); }
+.locked-color { color: var(--secondary); }
+.cancelled-color { color: var(--danger); }
+.small { font-size: 12px; }
+
+/* 表单错误 */
+.form-errors { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+.form-errors > * + * { margin-top: 4px; }
+
+.btn-small { padding: 6px 12px; font-size: 12px; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-secondary { background: #f3f4f6; color: var(--text); }
+.input-wrapper { flex: 1; }
+.row { display: flex; gap: 12px; }
+.input-label { display: block; font-size: 12px; color: var(--text-muted); margin: 8px 0 4px; }
+

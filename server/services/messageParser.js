@@ -81,7 +81,13 @@ function parseTimeString(timeStr) {
 function parseJoinMessage(text, nickname) {
   const normalized = text.toLowerCase().trim();
 
-  if (!/(上车|报名|我来|算我|加入|我要上)/.test(normalized) &&
+  const isUpdateCmd =
+    /^(改到店|到店)/.test(normalized) ||
+    /^(改备注|备注)[：:\s]+/.test(text.trim()) ||
+    /^(取消上车|取消报名|不去了|鸽车|下车|退出)\s*$/i.test(text.trim());
+
+  if (!isUpdateCmd &&
+      !/(上车|报名|我来|算我|加入|我要上)/.test(normalized) &&
       !/^(男生|女生|男|女|♂|♀)/.test(normalized) &&
       !/反串/.test(normalized) &&
       !/^\d+分钟/.test(normalized) &&
@@ -96,7 +102,9 @@ function parseJoinMessage(text, nickname) {
     can_crossplay: false,
     arrival_time: '',
     note: '',
-    is_standby: false
+    is_standby: false,
+    action: 'join',
+    updateFields: {}
   };
 
   if (/候补|排队|等|备用/.test(normalized)) {
@@ -107,19 +115,31 @@ function parseJoinMessage(text, nickname) {
   if (genderMatch) {
     if (genderMatch[1]) result.gender = '男';
     else if (genderMatch[2]) result.gender = '女';
+    if (result.gender) result.updateFields.gender = result.gender;
   }
 
   if (/反串/.test(normalized)) {
     result.can_crossplay = true;
+    result.updateFields.can_crossplay = true;
     if (!result.gender) {
       if (text.includes('男生') || text.includes('男') || text.includes('♂')) result.gender = '男';
       else if (text.includes('女生') || text.includes('女') || text.includes('♀')) result.gender = '女';
+      if (result.gender) result.updateFields.gender = result.gender;
     }
   }
 
   const arrivalMatch = text.match(/到店\s*(\d+)\s*分钟|(\d+)\s*分钟.*到店/);
   if (arrivalMatch) {
     result.arrival_time = (arrivalMatch[1] || arrivalMatch[2]) + '分钟';
+    result.updateFields.arrival_time = result.arrival_time;
+    result.action = 'update';
+  }
+
+  const remarkMatch = text.match(/^(改备注|备注)[：:\s]+(.{1,40})/i);
+  if (remarkMatch) {
+    result.note = remarkMatch[2].trim();
+    result.updateFields.note = result.note;
+    result.action = 'update';
   }
 
   if (/带.{0,3}人|带\d|\+\d/.test(normalized)) {
@@ -127,6 +147,7 @@ function parseJoinMessage(text, nickname) {
     const extra = extraMatch ? (parseInt(extraMatch[1] || extraMatch[2]) - 1) : 0;
     if (extra > 0) {
       result.note = `带${extra}人`;
+      result.updateFields.note = result.note;
     }
   }
 
@@ -136,7 +157,9 @@ function parseJoinMessage(text, nickname) {
 function isAdminCommand(text) {
   return /^(锁车|解锁|取消|删除|移除)\s*#?\d*$/.test(text.trim()) ||
          /^(踢人|移除|踢)\s*@?.+$/.test(text.trim()) ||
-         /^列表$/.test(text.trim());
+         /^列表$/.test(text.trim()) ||
+         /^(切换到|切到|切换)\s*#?\s*第?\s*\d+\s*(场|局|个)?$/.test(text.trim()) ||
+         /^(取消上车|取消报名|不去了|鸽车|下车|退出)\s*$/i.test(text.trim());
 }
 
 module.exports = {

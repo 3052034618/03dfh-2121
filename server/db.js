@@ -187,7 +187,17 @@ function buildSelectStatement(sql) {
   }
 
   if (sql.includes('SELECT * FROM carpools WHERE 1=1')) {
-    return new Statement('carpools', 'select', (db, status, groupId, limit, offset) => {
+    return new Statement('carpools', 'select', (db, ...args) => {
+      const nums = args.filter(a => typeof a === 'number');
+      const strs = args.filter(a => typeof a === 'string');
+      let status = null, groupId = null;
+      if (strs.length >= 1) status = strs[0];
+      if (strs.length >= 2) groupId = strs[1];
+      let limit = 50, offset = 0;
+      if (nums.length >= 1) limit = nums[nums.length - 2];
+      if (nums.length >= 2) offset = nums[nums.length - 1];
+      if (nums.length === 1) { limit = nums[0]; offset = 0; }
+
       let result = [...db.carpools];
       if (status && status !== 'all') {
         result = result.filter(c => c.status === status);
@@ -196,9 +206,24 @@ function buildSelectStatement(sql) {
         result = result.filter(c => c.group_id === groupId);
       }
       result.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-      const off = offset || 0;
-      const lim = limit || 50;
-      return result.slice(off, off + lim);
+      return result.slice(offset || 0, (offset || 0) + (limit || 50));
+    });
+  }
+
+  if (sql.includes('SELECT * FROM carpools ORDER BY created_at')) {
+    return new Statement('carpools', 'select', (db, ...args) => {
+      let result = [...db.carpools];
+      if (sql.includes('DESC')) {
+        result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      } else {
+        result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      }
+      const nums = args.filter(a => typeof a === 'number');
+      if (nums.length >= 2) {
+        const [limit, offset] = [nums[nums.length - 2], nums[nums.length - 1]];
+        return result.slice(offset, offset + limit);
+      }
+      return result;
     });
   }
 
@@ -261,6 +286,13 @@ function buildSelectStatement(sql) {
         p.carpool_id === carpoolId && p.status === 'confirmed' &&
         (p.nickname === nickname || (p.wxid && p.wxid === wxid))
       )
+    );
+  }
+
+  if (sql.includes('SELECT * FROM players') && sql.includes('status = \'cancelled\'')) {
+    return new Statement('players', 'select', (db, carpoolId) =>
+      db.players.filter(p => p.carpool_id === carpoolId && p.status === 'cancelled')
+        .sort((a, b) => new Date(b.joined_at) - new Date(a.joined_at))
     );
   }
 

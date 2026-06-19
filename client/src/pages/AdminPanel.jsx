@@ -7,6 +7,22 @@ const TABS = [
   { key: 'all', label: '全部' }
 ];
 
+function validateCreateForm(form) {
+  const errors = [];
+  if (!form.shop_name || !String(form.shop_name).trim()) errors.push('店名不能为空');
+  if (!form.script_name || !String(form.script_name).trim()) errors.push('剧本名称不能为空');
+  if (!form.start_time) errors.push('请选择发车时间');
+  else {
+    const t = new Date(form.start_time).getTime();
+    if (Number.isNaN(t)) errors.push('发车时间格式错误');
+    else if (t < Date.now() - 60 * 60 * 1000) errors.push('发车时间不能早于1小时前');
+  }
+  const nc = parseInt(form.need_count);
+  if (!Number.isFinite(nc) || nc <= 0) errors.push('缺人数必须大于0');
+  else if (nc > 30) errors.push('缺人数不能超过30人');
+  return errors;
+}
+
 export default function AdminPanel() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('recruiting');
@@ -40,9 +56,14 @@ export default function AdminPanel() {
         group_name: '手动创建',
         owner_nickname: '管理员'
       })
-    }).then(r => r.json()).then(carpool => {
-      setShowCreateModal(false);
-      navigate(`/admin/carpool/${carpool.id}`);
+    }).then(async r => {
+      const d = await r.json();
+      if (r.ok) {
+        setShowCreateModal(false);
+        navigate(`/admin/carpool/${d.id}`);
+      } else {
+        alert('创建失败：' + (d.error || '未知错误'));
+      }
     });
   }
 
@@ -52,6 +73,10 @@ export default function AdminPanel() {
         <Link to="/" className="back-btn" style={{ position: 'fixed' }}>← 返回</Link>
         <h1>🔧 群主管理台</h1>
         <p>管理所有拼车局</p>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <Link className="btn btn-primary btn-small" to="/admin/groups" style={{ flex: 1 }}>📊 群维度总览</Link>
       </div>
 
       <div className="admin-tabs">
@@ -103,6 +128,7 @@ export default function AdminPanel() {
               <span>📍 {c.shop_name}</span>
               <span>⏰ {formatTime(c.start_time)}</span>
               <span>👑 {c.owner_nickname}</span>
+              {c.group_name && <span>💬 {c.group_name}</span>}
             </div>
             <div className="carpool-list-progress">
               <div className="mini-progress">
@@ -145,12 +171,15 @@ function CreateCarpoolModal({ onClose, onSubmit }) {
     need_count: 6,
     role_requirement: ''
   });
+  const [errors, setErrors] = useState([]);
 
   function submit() {
-    if (!form.shop_name || !form.script_name || !form.start_time) {
-      alert('请填写完整信息');
+    const errs = validateCreateForm(form);
+    if (errs.length > 0) {
+      setErrors(errs);
       return;
     }
+    setErrors([]);
     onSubmit({
       ...form,
       start_time: new Date(form.start_time).toISOString()
@@ -162,14 +191,19 @@ function CreateCarpoolModal({ onClose, onSubmit }) {
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-title">创建新拼车</div>
         <div className="modal-body">
-          <label className="input-label">店名</label>
+          {errors.length > 0 && (
+            <div className="form-errors">
+              {errors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
+            </div>
+          )}
+          <label className="input-label">店名 *</label>
           <input
             className="input"
             placeholder="如：推理俱乐部"
             value={form.shop_name}
             onChange={e => setForm({ ...form, shop_name: e.target.value })}
           />
-          <label className="input-label">剧本名</label>
+          <label className="input-label">剧本名 *</label>
           <input
             className="input"
             placeholder="如：雾鸦馆"
@@ -178,7 +212,7 @@ function CreateCarpoolModal({ onClose, onSubmit }) {
           />
           <div className="row">
             <div className="input-wrapper">
-              <label className="input-label">开始时间</label>
+              <label className="input-label">开始时间 *</label>
               <input
                 type="datetime-local"
                 className="input"
@@ -187,14 +221,14 @@ function CreateCarpoolModal({ onClose, onSubmit }) {
               />
             </div>
             <div className="input-wrapper">
-              <label className="input-label">需要人数</label>
+              <label className="input-label">需要人数 *</label>
               <input
                 type="number"
                 className="input"
-                min={2}
-                max={12}
+                min={1}
+                max={30}
                 value={form.need_count}
-                onChange={e => setForm({ ...form, need_count: parseInt(e.target.value) })}
+                onChange={e => setForm({ ...form, need_count: parseInt(e.target.value) || 0 })}
               />
             </div>
           </div>

@@ -36,9 +36,14 @@ export default function AdminCarpoolDetail() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...data, carpool_id: id })
-    }).then(() => {
-      setShowAddPlayer(false);
-      loadData();
+    }).then(async r => {
+      const d = await r.json();
+      if (r.ok) {
+        setShowAddPlayer(false);
+        loadData();
+      } else {
+        alert('添加失败：' + (d.error || '未知错误'));
+      }
     });
   }
 

@@ -19,6 +19,40 @@ class BotOrchestrator {
     adapter.setOrchestrator(this);
   }
 
+  registerCarpool(groupId, carpoolId) {
+    if (!this.activeCarpools.has(groupId)) {
+      this.activeCarpools.set(groupId, { list: [], currentIdx: 0 });
+    }
+    const group = this.activeCarpools.get(groupId);
+    const exists = group.list.find(c => c.carpoolId === carpoolId);
+    if (!exists) {
+      group.list.push({ idx: group.list.length + 1, carpoolId });
+    }
+    group.currentIdx = group.list.length - 1;
+  }
+
+  getCurrentCarpoolId(groupId) {
+    const group = this.activeCarpools.get(groupId);
+    if (!group || group.list.length === 0) return null;
+    return group.list[group.currentIdx].carpoolId;
+  }
+
+  switchCarpool(groupId, idxOrNumber) {
+    const group = this.activeCarpools.get(groupId);
+    if (!group) return null;
+    const target = idxOrNumber.idx != null
+      ? group.list.find(c => c.idx === idxOrNumber.idx)
+      : group.list.find(c => c.carpoolId === idxOrNumber.carpoolId);
+    if (!target) return null;
+    group.currentIdx = group.list.indexOf(target);
+    return target;
+  }
+
+  getGroupCarpools(groupId) {
+    const group = this.activeCarpools.get(groupId);
+    return group ? [...group.list] : [];
+  }
+
   setupEventListeners() {
     reminderService.on('carpool:full', (data) => {
       this.sendLockReminder(data);
@@ -57,12 +91,18 @@ class BotOrchestrator {
       }
 
       const joinData = parseJoinMessage(text, senderName);
-      if (joinData && this.activeCarpools.has(groupId)) {
+      if (joinData && this.getCurrentCarpoolId(groupId)) {
         return this.handleJoin({ groupId, senderId, ...joinData });
       }
 
       if (this.isAdmin(senderName) && isAdminCommand(text)) {
         return this.handleAdminCommand({ groupId, senderName, text });
+      }
+
+      const switchMatch = text.match(/^(切换到|切到|切换)\s*#?\s*第?\s*(\d+)\s*(场|局|个)?$/);
+      if (switchMatch) {
+        const idx = parseInt(switchMatch[2]);
+        return this.handleSwitchCarpool(groupId, idx);
       }
 
       if (text.trim() === '帮助' || text.trim() === '/help') {
@@ -93,10 +133,11 @@ class BotOrchestrator {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, shop_name, script_name, start_time, need_count, role_requirement || '', groupId, groupName || '', senderName, senderId || '');
 
-    this.activeCarpools.set(groupId, id);
+    this.registerCarpool(groupId, id);
 
     const carpool = getCarpoolWithPlayers(id);
-    const reply = this.formatCarpoolCreatedMessage(carpool);
+    const groupList = this.getGroupCarpools(groupId);
+    const reply = this.formatCarpoolCreatedMessage(carpool, groupList.length);
 
     this.sendMessage(groupId, reply);
 
@@ -106,7 +147,7 @@ class BotOrchestrator {
   async handleJoin(data) {
     const { groupId, senderId, nickname, gender, can_crossplay, arrival_time, note, is_standby } = data;
 
-    const carpoolId = this.activeCarpools.get(groupId);
+    const carpoolId = this.getCurrentCarpoolId(groupId);
     if (!carpoolId) {
       return null;
     }
@@ -207,7 +248,19 @@ class BotOrchestrator {
 
   async handleAdminCommand(data) {
     const { groupId, senderName, text } = data;
-    const carpoolId = this.activeCarpools.get(groupId);
+    const carpoolId = this.getCurrentCarpoolId(groupId);
+
+    // 新增：取消上车命令（玩家自己也可用）
+    const quitMatch = text.match(/^(取消上车|取消报名|不去了|鸽车|下车|退出)\s*$/i);
+    if (quitMatch) {
+      if (!carpoolId) return this.sendMessage(groupId, '当前没有进行中的拼车');
+      return this.handlePlayerQuit(groupId, carpoolId, senderName, senderId);
+    }
+
+    // 新增：修改到店时间/备注
+    if (!carpoolId) {
+      return null;
+    }
 
     if (text.startsWith('锁车')) {
       if (!carpoolId) return this.sendMessage(groupId, '当前没有进行中的拼车');
@@ -321,11 +374,15 @@ class BotOrchestrator {
 男生可反串 / 女生不反串
 到店20分钟
 候补 / 排队
+取消上车 / 鸽车 - 退出当前拼车
+
+【多车局操作】
+列表 - 查看所有拼车及编号
+切换 2 / 切到第2场 - 切换当前场次
 
 【管理命令】
 锁车 / 解锁 / 取消
 踢人 @玩家名 或 移除 玩家名
-列表 - 查看当前拼车
 帮助 - 显示本说明
 
 📊 车位详情: ${CLIENT_URL}/carpool/{ID}`;
@@ -333,19 +390,38 @@ class BotOrchestrator {
   }
 
   sendCarpoolList({ groupId }) {
-    const carpoolId = this.activeCarpools.get(groupId);
-    if (!carpoolId) {
+    const list = this.getGroupCarpools(groupId);
+    if (list.length === 0) {
       return this.sendMessage(groupId, '当前没有进行中的拼车');
     }
-    const carpool = getCarpoolWithPlayers(carpoolId);
-    this.sendMessage(groupId, this.formatCarpoolStatus(carpool));
+
+    const currentId = this.getCurrentCarpoolId(groupId);
+    let msg = '📋 当前拼车列表（共' + list.length + '场）：\n\n';
+    const sortedByTime = list
+      .map(item => ({ ...item, carpool: getCarpoolWithPlayers(item.carpoolId) }))
+      .sort((a, b) => new Date(a.carpool.start_time) - new Date(b.carpool.start_time));
+
+    sortedByTime.forEach((entry, i) => {
+      const c = entry.carpool;
+      if (!c) return;
+      const date = new Date(c.start_time);
+      const timeStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+      const statusTag = c.status === 'locked' ? '🔒' : c.status === 'cancelled' ? '❌' : '🎲';
+      const currentTag = c.id === currentId ? ' ← 当前' : '';
+      msg += `  #${entry.idx} ${statusTag} ${c.script_name} @ ${c.shop_name}\n`;
+      msg += `     ⏰ ${timeStr} | ${c.current_count}/${c.need_count}人${currentTag}\n\n`;
+    });
+
+    msg += '发送「切换 2」切换到对应场次';
+    this.sendMessage(groupId, msg);
   }
 
-  formatCarpoolCreatedMessage(carpool) {
+  formatCarpoolCreatedMessage(carpool, idx) {
     const date = new Date(carpool.start_time);
     const timeStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    const idxStr = idx ? ` [#${idx}]` : '';
 
-    return `🎲 新拼车已创建！
+    return `🎲 新拼车已创建${idxStr}！
 
 📍 店名：${carpool.shop_name}
 📖 剧本：${carpool.script_name}
@@ -357,12 +433,13 @@ ${carpool.role_requirement ? `🎭 角色：${carpool.role_requirement}` : ''}
 🔗 查看详情：${CLIENT_URL}/carpool/${carpool.id}`;
   }
 
-  formatCarpoolStatus(carpool) {
+  formatCarpoolStatus(carpool, idx) {
     const date = new Date(carpool.start_time);
     const timeStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     const statusEmoji = carpool.status === 'locked' ? '🔒' : carpool.status === 'cancelled' ? '❌' : '🎲';
+    const idxStr = idx ? ` [#${idx}]` : '';
 
-    let msg = `${statusEmoji} ${carpool.script_name} @ ${carpool.shop_name}
+    let msg = `${statusEmoji} ${carpool.script_name}${idxStr} @ ${carpool.shop_name}
 ⏰ ${timeStr} | ${carpool.current_count}/${carpool.need_count}人\n`;
 
     if (carpool.confirmed_players.length > 0) {
@@ -458,12 +535,57 @@ ${scriptName} @ ${shopName}
     }
   }
 
+  handleSwitchCarpool(groupId, idx) {
+    const list = this.getGroupCarpools(groupId);
+    if (list.length === 0) {
+      return this.sendMessage(groupId, '当前没有进行中的拼车');
+    }
+    const target = this.switchCarpool(groupId, { idx });
+    if (!target) {
+      return this.sendMessage(groupId, `❌ 未找到 #${idx} 号拼车，请先发送「列表」查看`);
+    }
+    const carpool = getCarpoolWithPlayers(target.carpoolId);
+    let msg = `✅ 已切换到 #${idx} 场\n\n`;
+    msg += this.formatCarpoolStatus(carpool, idx);
+    msg += `\n后续上车、锁车、取消等操作将作用到本场`;
+    this.sendMessage(groupId, msg);
+  }
+
+  handlePlayerQuit(groupId, carpoolId, nickname, wxid) {
+    const player = db.prepare(`
+      SELECT * FROM players 
+      WHERE carpool_id = ? AND status = 'confirmed' AND (nickname = ? OR (wxid AND wxid = ?))
+    `).get(carpoolId, nickname, wxid || '');
+
+    if (!player) {
+      return this.sendMessage(groupId, `❌ ${nickname} 未在当前拼车名单中`);
+    }
+
+    db.prepare("UPDATE players SET status = 'cancelled', cancelled_at = ? WHERE id = ?").run(new Date().toISOString(), player.id);
+
+    const carpool = getCarpoolWithPlayers(carpoolId);
+    const wasStandby = player.is_standby === 1;
+    let promotedMsg = '';
+    if (!wasStandby && carpool.current_count < carpool.need_count) {
+      const next = this.promoteNextStandby(carpoolId);
+      if (next) {
+        promotedMsg = `\n\n🎊 【候补转正】@${next.nickname} 你有位置啦！请回复「确认」或直接在群里打招呼~`;
+      }
+    }
+    const updated = getCarpoolWithPlayers(carpoolId);
+    const idx = this.getGroupCarpools(groupId).find(c => c.carpoolId === carpoolId)?.idx;
+    let msg = `👋 ${nickname} 已退出${wasStandby ? '候补队列' : '确认名单'}\n\n`;
+    msg += this.formatCarpoolStatus(updated, idx);
+    msg += promotedMsg;
+    this.sendMessage(groupId, msg);
+  }
+
   setActiveCarpool(groupId, carpoolId) {
-    this.activeCarpools.set(groupId, carpoolId);
+    this.registerCarpool(groupId, carpoolId);
   }
 
   getActiveCarpool(groupId) {
-    return this.activeCarpools.get(groupId);
+    return this.getCurrentCarpoolId(groupId);
   }
 }
 

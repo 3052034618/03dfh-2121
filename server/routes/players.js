@@ -6,6 +6,24 @@ const reminderService = require('../services/reminderService');
 
 const router = express.Router();
 
+function validatePlayerInput(data, { isUpdate = false } = {}) {
+  const errors = [];
+  if (!isUpdate || data.nickname !== undefined) {
+    if (!data.nickname || !String(data.nickname).trim()) errors.push('昵称不能为空');
+    else if (String(data.nickname).length > 30) errors.push('昵称不能超过30字');
+  }
+  if (data.gender !== undefined && data.gender && !['男', '女', ''].includes(String(data.gender))) {
+    errors.push('性别只能是男/女/空');
+  }
+  if (data.arrival_time !== undefined && String(data.arrival_time).length > 40) {
+    errors.push('到店时间不能超过40字');
+  }
+  if (data.note !== undefined && String(data.note).length > 200) {
+    errors.push('备注不能超过200字');
+  }
+  return errors;
+}
+
 function getNextStandbyOrder(carpoolId) {
   const max = db.prepare(`
     SELECT COALESCE(MAX(standby_order), 0) as max_order 
@@ -41,6 +59,11 @@ router.post('/', (req, res) => {
 
   if (!carpool_id || !nickname) {
     return res.status(400).json({ error: '缺少必填字段' });
+  }
+
+  const errors = validatePlayerInput(req.body);
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join('；') });
   }
 
   const carpool = db.prepare('SELECT * FROM carpools WHERE id = ?').get(carpool_id);
@@ -117,6 +140,11 @@ router.put('/:id', (req, res) => {
   }
 
   const { gender, can_crossplay, arrival_time, note } = req.body;
+
+  const errors = validatePlayerInput(req.body, { isUpdate: true });
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join('；') });
+  }
 
   db.prepare(`
     UPDATE players SET
